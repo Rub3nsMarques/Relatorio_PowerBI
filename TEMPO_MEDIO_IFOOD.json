@@ -1,0 +1,363 @@
+{
+  "name": "TEMPO_MEDIO_IFOOD",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "clear",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "TMP_IFOOD",
+          "mode": "name"
+        }
+      },
+      "id": "c4594c9e-82b9-434b-bb22-5e2cb135d842",
+      "name": "Limpar aba TMP_IFOOD",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-224, 144],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_CRED_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  const ts = item.json.timestamp ?? new Date().toISOString(); // fallback: agora\n  const base = new Date(ts);\n\n  // Data final = dia do timestamp\n  const endDate = new Date(base);\n\n  // Data inicial = 1º dia do mês, forçando horário para meio-dia\n  const startDate = new Date(base.getFullYear(), base.getMonth(), 1, 12, 0, 0);\n\n  // Formata para dd/mm/aaaa\n  const timeZone = 'America/Sao_Paulo';\n  const fmt = (d) => d.toLocaleDateString('pt-BR', { timeZone });\n\n  item.json.data_inicio = fmt(startDate); // 01/mm/aaaa\n  item.json.data_fim    = fmt(endDate);   // dd/mm/aaaa\n  return item;\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-976, 32],
+      "id": "c4cbf824-6ec1-41c8-adea-b6ab7b11986e",
+      "name": "Transforma as datas de acordo com o que precisamos"
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "mimeType='application/vnd.google-apps.spreadsheet'",
+        "returnAll": true,
+        "filter": {
+          "whatToSearch": "all"
+        },
+        "options": {
+          "fields": ["name", "id"]
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [-800, 32],
+      "id": "42ccbd6c-7b7e-4853-a619-52fafc0706e3",
+      "name": "Pega os sheets",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "GOOGLE_DRIVE_CRED_ID",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5ba39921-54ba-4123-96cb-99848126a6b3",
+              "leftValue": "={{ $json.name }}",
+              "rightValue": "=NOME_DO_RELATORIO_AQUI",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-624, 32],
+      "id": "b7d99595-3df4-4b95-aab4-e71cf2a60221",
+      "name": "Verifica se o sheet existe",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0e19ee95-9718-4302-aeb4-5b61d0ddb7ba",
+              "leftValue": "={{ $json.id }}",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-400, 16],
+      "id": "11c0ba1b-55d3-493e-953b-19e7364ec8c5",
+      "name": "Verifica se está vazio"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Função para formatar data no padrão dd/mm/aaaa hh:mm\nfunction formatarDataGMT3(data) {\n  const dia = String(data.getDate()).padStart(2, '0');\n  const mes = String(data.getMonth() + 1).padStart(2, '0');\n  const ano = data.getFullYear();\n  const hora = String(data.getHours()).padStart(2, '0');\n  const minuto = String(data.getMinutes()).padStart(2, '0');\n  return `${dia}/${mes}/${ano} ${hora}:${minuto}`;\n}\n\n// 1. Obter data atual (UTC) e ajustar para GMT-3\nconst agora = new Date();\nconst agoraGMT3 = new Date(agora.getTime() - 3 * 60 * 60 * 1000);\n\n// 2. Definir o limite de hoje (23:59) para usar na Data Fim\nconst hojeLimite = new Date(agoraGMT3);\nhojeLimite.setHours(23, 59, 0, 0); \n\n// 3. Definir Data INÍCIO: \"Ontem às 10:00\"\nconst dataInicioObj = new Date(agoraGMT3);\ndataInicioObj.setDate(dataInicioObj.getDate() - 1); // Volta 1 dia (Ontem)\ndataInicioObj.setHours(0, 0, 0, 0);                // Fixa em 10:00 da manhã\n\n// 4. Definir Data FIM (Até \"agora\", mas não passando de 23:59)\nlet dataFimObj;\n\nif (agoraGMT3 < hojeLimite) {\n  // Se ainda não é 23:59, o fim é \"agora\"\n  dataFimObj = agoraGMT3;\n} else {\n  // Se já passou de 23:59 (fim do dia), trava em 23:59\n  dataFimObj = hojeLimite;\n}\n\n// 5. Formatar as datas para string\nconst data_inicio = formatarDataGMT3(dataInicioObj);\nconst data_fim = formatarDataGMT3(dataFimObj);\n\n// 6. Capturar a HORA atual como NÚMERO\nconst hora_atual = agoraGMT3.getHours();\n\n// 7. Retornar\nreturn [\n  {\n    json: {\n      data_inicio,\n      data_fim,\n      hora_atual,\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "id": "a51926d4-41b8-42de-bde5-1a96b9054eb4",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.seusite.com.br/relatorios/relatorio-tempomedioifood",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer SUA_TOKEN_AQUI"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"data_inicio\": \"{{ $json.data_inicio }}\",\n  \"data_fim\": \"{{ $json.data_fim }}\",\n  \"hora\": {{ Number($json.hora_atual) }}\n}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [192, 0],
+      "id": "6cd137d8-380c-4ef5-9001-aed041d9a194",
+      "name": "Faz a requisição das informações",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Limpar aba TMP_IFOOD').item.json.id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "TMP_IFOOD",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [624, 0],
+      "id": "bab68f24-7c48-4bc2-b8d8-b5a8c92fcc32",
+      "name": "Preenche a tabela com as informações",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_CRED_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [-1168, 32],
+      "id": "ad64bf41-cede-47f4-bd99-4768abc17886",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [832, 0],
+      "id": "3f7af035-8f97-437f-b993-617115500c61",
+      "name": "No Operation, do nothing"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Definimos as colunas padrão baseadas na sua imagem\nconst DEFAULT_HEADERS = {\n    \"PEDIDO\": \"\",\n    \"CANAL\": \"\",\n    \"UNIDADE\": \"\",\n    \"DATA\": \"\",\n    \"HORA PEDIDO\": \"\",\n    \"HORA ACEITO\": \"\",\n    \"HORA PRODUZIDO\": \"\",\n    \"PRODUZIDO POR\": \"\",\n    \"HORA DESPACHADO\": \"\",\n    \"DESPACHADO POR\": \"\",\n    \"TEMPO ESPERADO\": \"\",\n    \"TEMPO REAL\": \"\",\n    \"RESULTADO\": \"\"\n};\n\n// 2. Pega o output do HTTP Request com segurança\nconst response = items[0] ? items[0].json : {};\n\n// 3. Verifica se o \"data\" existe e se tem itens dentro\nif (!response.data || !Array.isArray(response.data) || response.data.length === 0) {\n    // CASO VAZIO: Retorna uma linha \"dummy\" apenas com os cabeçalhos vazios\n    return [\n        {\n            json: DEFAULT_HEADERS\n        }\n    ];\n}\n\n// 4. CASO COM DADOS: Mapeia os dados reais normalmente\nreturn response.data.map(item => {\n    return {\n        json: item\n    }\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [416, 261],
+      "id": "7373bd9b-56aa-4f8b-888c-206a4f0b042f",
+      "name": "Transforma os dados"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Limpar aba TMP_IFOOD": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transforma as datas de acordo com o que precisamos": {
+      "main": [
+        [
+          {
+            "node": "Pega os sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pega os sheets": {
+      "main": [
+        [
+          {
+            "node": "Verifica se o sheet existe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verifica se o sheet existe": {
+      "main": [
+        [
+          {
+            "node": "Verifica se está vazio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verifica se está vazio": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Limpar aba TMP_IFOOD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Faz a requisição das informações",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Faz a requisição das informações": {
+      "main": [
+        [
+          {
+            "node": "Transforma os dados",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Transforma as datas de acordo com o que precisamos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preenche a tabela com as informações": {
+      "main": [
+        [
+          {
+            "node": "No Operation, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transforma os dados": {
+      "main": [
+        [
+          {
+            "node": "Preenche a tabela com as informações",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "cb91fe1e-c6e2-4a30-8ffd-e3e408f2b849",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1c75de71f4e32c4fd360edfa31b9fcc1bab22ec6db64fafc56f7e1a3fc79649d"
+  },
+  "id": "NVUytpEv0maMAvN5",
+  "tags": []
+}
